@@ -2,7 +2,7 @@ package io.github.prospector.modmenu.gui.entries;
 
 import io.github.prospector.modmenu.gui.ModListEntry;
 import io.github.prospector.modmenu.gui.ModListWidget;
-import net.fabricmc.loader.api.ModContainer;
+import io.github.prospector.modmenu.util.Mod;
 import net.minecraft.client.gui.DrawableHelper;
 import net.minecraft.client.util.math.MatrixStack;
 
@@ -10,8 +10,8 @@ public class ChildEntry extends ModListEntry {
 	private boolean bottomChild;
 	private ParentEntry parent;
 
-	public ChildEntry(ModContainer container, ParentEntry parent, ModListWidget list, boolean bottomChild) {
-		super(container, list);
+	public ChildEntry(Mod mod, ParentEntry parent, ModListWidget list, boolean bottomChild) {
+		super(mod, list);
 		this.bottomChild = bottomChild;
 		this.parent = parent;
 	}

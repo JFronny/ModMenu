@@ -1,15 +1,18 @@
 package io.github.prospector.modmenu.config;
 
 import com.google.gson.annotations.SerializedName;
-import io.github.prospector.modmenu.util.HardcodedUtil;
-import net.fabricmc.loader.api.ModContainer;
+import io.github.prospector.modmenu.util.Mod;
 
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 
 public class ModMenuConfig {
 	private boolean showLibraries = false;
 	private boolean hideConfigButtons = false;
+	private boolean hideBadges = false;
 	private Sorting sorting = Sorting.ASCENDING;
+	private Set<String> hiddenMods = new HashSet<>();
 
 	public void toggleShowLibraries() {
 		this.showLibraries = !this.showLibraries;
@@ -33,21 +36,41 @@ public class ModMenuConfig {
 		return sorting == null ? Sorting.ASCENDING : sorting;
 	}
 
+	public void hideMod(String id) {
+		hiddenMods.add(id);
+	}
+
+	public void unhideMod(String id) {
+		hiddenMods.remove(id);
+	}
+
+	public boolean isModHidden(String id) {
+		return hiddenMods.contains(id);
+	}
+
+	public Set<String> getHiddenMods() {
+		return hiddenMods;
+	}
+
+	public boolean areBadgesHidden() {
+		return hideBadges;
+	}
+
 	public enum Sorting {
 		@SerializedName("ascending")
-		ASCENDING(Comparator.comparing(modContainer -> HardcodedUtil.formatFabricModuleName(modContainer.getMetadata().getName()).asString()), "modmenu.sorting.ascending"),
+		ASCENDING(Comparator.comparing(mod -> mod.getName().toLowerCase()), "modmenu.sorting.ascending"),
 		@SerializedName("descending")
 		DESCENDING(ASCENDING.getComparator().reversed(), "modmenu.sorting.decending");
 
-		Comparator<ModContainer> comparator;
+		Comparator<Mod> comparator;
 		String translationKey;
 
-		Sorting(Comparator<ModContainer> comparator, String translationKey) {
+		Sorting(Comparator<Mod> comparator, String translationKey) {
 			this.comparator = comparator;
 			this.translationKey = translationKey;
 		}
 
-		public Comparator<ModContainer> getComparator() {
+		public Comparator<Mod> getComparator() {
 			return comparator;
 		}
 

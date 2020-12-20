@@ -5,9 +5,7 @@ import io.github.prospector.modmenu.gui.ModsScreen;
 import net.minecraft.client.gui.screen.Screen;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 public interface ModMenuApi {
 	/**

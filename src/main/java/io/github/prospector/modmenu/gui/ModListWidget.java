@@ -7,17 +7,14 @@ import io.github.prospector.modmenu.gui.entries.ChildEntry;
 import io.github.prospector.modmenu.gui.entries.IndependentEntry;
 import io.github.prospector.modmenu.gui.entries.ParentEntry;
 import io.github.prospector.modmenu.mixin.EntryListWidgetAccessor;
-import io.github.prospector.modmenu.util.HardcodedUtil;
+import io.github.prospector.modmenu.util.Mod;
+import io.github.prospector.modmenu.util.ModIconHandler;
 import io.github.prospector.modmenu.util.ModListSearch;
-import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
-import net.fabricmc.loader.api.metadata.ModMetadata;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.widget.AlwaysSelectedEntryListWidget;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.Tessellator;
 import net.minecraft.client.render.VertexFormats;
-import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.util.NarratorManager;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.TranslatableText;
@@ -26,25 +23,25 @@ import net.minecraft.util.math.Matrix4f;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ModListWidget extends AlwaysSelectedEntryListWidget<ModListEntry> implements AutoCloseable {
 	private static final Logger LOGGER = LogManager.getLogger();
 	public static final boolean DEBUG = Boolean.getBoolean("modmenu.debug");
 
-	private final Map<Path, NativeImageBackedTexture> modIconsCache = new HashMap<>();
 	private final ModsScreen parent;
-	private List<ModContainer> modContainerList = null;
-	private Set<ModContainer> addedMods = new HashSet<>();
+	private List<Mod> mods = null;
+	private final Set<Mod> addedMods = new HashSet<>();
 	private String selectedModId = null;
 	private boolean scrolling;
+	private final ModIconHandler iconHandler = new ModIconHandler();
 
 	public ModListWidget(MinecraftClient client, int width, int height, int y1, int y2, int entryHeight, String searchTerm, ModListWidget list, ModsScreen parent) {
 		super(client, width, height, y1, y2, entryHeight);
 		this.parent = parent;
 		if (list != null) {
-			this.modContainerList = list.modContainerList;
+			this.mods = list.mods;
 		}
 		this.filter(searchTerm, false);
 		setScrollAmount(parent.getScrollPercent() * Math.max(0, this.getMaxPosition() - (this.bottom - this.top - 4)));
@@ -69,32 +66,32 @@ public class ModListWidget extends AlwaysSelectedEntryListWidget<ModListEntry> i
 	public void select(ModListEntry entry) {
 		this.setSelected(entry);
 		if (entry != null) {
-			ModMetadata metadata = entry.getMetadata();
-			NarratorManager.INSTANCE.narrate(new TranslatableText("narrator.select", HardcodedUtil.formatFabricModuleName(metadata.getName())).getString());
+			Mod mod = entry.getMod();
+			NarratorManager.INSTANCE.narrate(new TranslatableText("narrator.select", mod.getName()).getString());
 		}
 	}
 
 	@Override
 	public void setSelected(ModListEntry entry) {
 		super.setSelected(entry);
-		selectedModId = entry.getMetadata().getId();
+		selectedModId = entry.getMod().getId();
 		parent.updateSelectedEntry(getSelected());
 	}
 
 	@Override
 	protected boolean isSelectedItem(int index) {
 		ModListEntry selected = getSelected();
-		return selected != null && selected.getMetadata().getId().equals(getEntry(index).getMetadata().getId());
+		return selected != null && selected.getMod().getId().equals(getEntry(index).getMod().getId());
 	}
 
 	@Override
 	public int addEntry(ModListEntry entry) {
-		if (addedMods.contains(entry.container)) {
+		if (addedMods.contains(entry.mod)) {
 			return 0;
 		}
-		addedMods.add(entry.container);
+		addedMods.add(entry.mod);
 		int i = super.addEntry(entry);
-		if (entry.getMetadata().getId().equals(selectedModId)) {
+		if (entry.getMod().getId().equals(selectedModId)) {
 			setSelected(entry);
 		}
 		return i;
@@ -102,13 +99,13 @@ public class ModListWidget extends AlwaysSelectedEntryListWidget<ModListEntry> i
 
 	@Override
 	protected boolean removeEntry(ModListEntry entry) {
-		addedMods.remove(entry.container);
+		addedMods.remove(entry.mod);
 		return super.removeEntry(entry);
 	}
 
 	@Override
 	protected ModListEntry remove(int index) {
-		addedMods.remove(getEntry(index).container);
+		addedMods.remove(getEntry(index).mod);
 		return super.remove(index);
 	}
 
@@ -124,56 +121,53 @@ public class ModListWidget extends AlwaysSelectedEntryListWidget<ModListEntry> i
 	private void filter(String searchTerm, boolean refresh, boolean search) {
 		this.clearEntries();
 		addedMods.clear();
-		Collection<ModContainer> mods = FabricLoader.getInstance().getAllMods();
+		Collection<Mod> mods = ModMenu.MODS.values().stream().filter(mod -> !ModMenuConfigManager.getConfig().isModHidden(mod.getId())).collect(Collectors.toSet());
 
 		if (DEBUG) {
 			mods = new ArrayList<>(mods);
 //			mods.addAll(TestModContainer.getTestModContainers());
 		}
 
-		if (this.modContainerList == null || refresh) {
-			this.modContainerList = new ArrayList<>();
-			modContainerList.addAll(mods);
-			this.modContainerList.sort(ModMenuConfigManager.getConfig().getSorting().getComparator());
+		if (this.mods == null || refresh) {
+			this.mods = new ArrayList<>();
+			this.mods.addAll(mods);
+			this.mods.sort(ModMenuConfigManager.getConfig().getSorting().getComparator());
 		}
 
-		boolean validSearch = ModListSearch.validSearchQuery(searchTerm);
-		List<ModContainer> matched = ModListSearch.search(parent, searchTerm, modContainerList);
+		List<Mod> matched = ModListSearch.search(parent, searchTerm, this.mods);
 
-		for (ModContainer container : matched) {
-			ModMetadata metadata = container.getMetadata();
-			String modId = metadata.getId();
-			boolean library = ModMenu.LIBRARY_MODS.contains(modId);
+		for (Mod mod : matched) {
+			String modId = mod.getId();
 
 			//Hide parent lib mods when the config is set to hide
-			if (library && !ModMenuConfigManager.getConfig().showLibraries()) {
+			if (mod.getBadges().contains(Mod.Badge.LIBRARY) && !ModMenuConfigManager.getConfig().showLibraries()) {
 				continue;
 			}
 
-			if (!ModMenu.PARENT_MAP.values().contains(container)) {
-				if (ModMenu.PARENT_MAP.keySet().contains(container)) {
+			if (!ModMenu.PARENT_MAP.values().contains(mod)) {
+				if (ModMenu.PARENT_MAP.keySet().contains(mod)) {
 					//Add parent mods when not searching
-					List<ModContainer> children = ModMenu.PARENT_MAP.get(container);
+					List<Mod> children = ModMenu.PARENT_MAP.get(mod);
 					children.sort(ModMenuConfigManager.getConfig().getSorting().getComparator());
-					ParentEntry parent = new ParentEntry(container, children, this);
+					ParentEntry parent = new ParentEntry(mod, children, this);
 					this.addEntry(parent);
 					//Add children if they are meant to be shown
 					if (this.parent.showModChildren.contains(modId)) {
-						List<ModContainer> validChildren = ModListSearch.search(this.parent, searchTerm, children);
-						for (ModContainer child : validChildren) {
+						List<Mod> validChildren = ModListSearch.search(this.parent, searchTerm, children);
+						for (Mod child : validChildren) {
 							this.addEntry(new ChildEntry(child, parent, this, validChildren.indexOf(child) == validChildren.size() - 1));
 						}
 					}
 				} else {
 					//A mod with no children
-					this.addEntry(new IndependentEntry(container, this));
+					this.addEntry(new IndependentEntry(mod, this));
 				}
 			}
 		}
 
-		if (parent.getSelectedEntry() != null && !children().isEmpty() || this.getSelected() != null && getSelected().getMetadata() != parent.getSelectedEntry().getMetadata()) {
+		if (parent.getSelectedEntry() != null && !children().isEmpty() || this.getSelected() != null && getSelected().getMod() != parent.getSelectedEntry().getMod()) {
 			for (ModListEntry entry : children()) {
-				if (entry.getMetadata().equals(parent.getSelectedEntry().getMetadata())) {
+				if (entry.getMod().equals(parent.getSelectedEntry().getMod())) {
 					setSelected(entry);
 				}
 			}
@@ -299,14 +293,10 @@ public class ModListWidget extends AlwaysSelectedEntryListWidget<ModListEntry> i
 		return super.getMaxPosition() + 4;
 	}
 
-	public int getDisplayedCount() {
-		return children().size();
-	}
-
 	public int getDisplayedCountFor(Set<String> set) {
 		int count = 0;
 		for (ModListEntry c : children()) {
-			if (set.contains(c.getMetadata().getId())) {
+			if (set.contains(c.getMod().getId())) {
 				count++;
 			}
 		}
@@ -315,20 +305,10 @@ public class ModListWidget extends AlwaysSelectedEntryListWidget<ModListEntry> i
 
 	@Override
 	public void close() {
-		for (NativeImageBackedTexture tex : this.modIconsCache.values()) {
-			tex.close();
-		}
+		iconHandler.close();
 	}
 
-	NativeImageBackedTexture getCachedModIcon(Path path) {
-		return this.modIconsCache.get(path);
-	}
-
-	void cacheModIcon(Path path, NativeImageBackedTexture tex) {
-		this.modIconsCache.put(path, tex);
-	}
-
-	public Set<ModContainer> getCurrentModSet() {
-		return addedMods;
+	protected ModIconHandler getIconHandler() {
+		return iconHandler;
 	}
 }

@@ -2,7 +2,6 @@ package io.github.prospector.modmenu.gui;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import io.github.prospector.modmenu.util.HardcodedUtil;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.widget.EntryListWidget;
@@ -48,11 +47,7 @@ public class DescriptionListWidget extends EntryListWidget<DescriptionListWidget
 			lastSelected = selectedEntry;
 			clearEntries();
 			setScrollAmount(-Double.MAX_VALUE);
-			String description = lastSelected.getMetadata().getDescription();
-			String id = lastSelected.getMetadata().getId();
-			if (description.isEmpty() && HardcodedUtil.getHardcodedDescriptions().containsKey(id)) {
-				description = HardcodedUtil.getHardcodedDescription(id);
-			}
+			String description = lastSelected.getMod().getDescription();
 			if (lastSelected != null && description != null && !description.isEmpty()) {
 				for (OrderedText line : textRenderer.wrapLines(new LiteralText(description.replaceAll("\n", "\n\n")), getRowWidth() - 5)) {
 					children().add(new DescriptionEntry(line, this));

@@ -5,11 +5,10 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.prospector.modmenu.ModMenu;
 import io.github.prospector.modmenu.config.ModMenuConfigManager;
 import io.github.prospector.modmenu.util.BadgeRenderer;
-import io.github.prospector.modmenu.util.HardcodedUtil;
+import io.github.prospector.modmenu.util.Mod;
 import io.github.prospector.modmenu.util.RenderUtils;
+import io.github.prospector.modmenu.util.TranslationUtil;
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.metadata.ModMetadata;
-import net.fabricmc.loader.api.metadata.Person;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawableHelper;
 import net.minecraft.client.gui.screen.ConfirmChatLinkScreen;
@@ -39,7 +38,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.NumberFormat;
 import java.util.*;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -73,18 +71,20 @@ public class ModsScreen extends Screen {
 	private int searchRowWidth;
 	public final Set<String> showModChildren = new HashSet<>();
 
+	private final Map<String, Screen> configScreenCache = new HashMap<>();
+
 	public ModsScreen(Screen previousScreen) {
 		super(new TranslatableText("modmenu.title"));
 		this.previousScreen = previousScreen;
 	}
 
 	@Override
-	public boolean mouseScrolled(double double_1, double double_2, double double_3) {
-		if (modList.isMouseOver(double_1, double_2)) {
-			return this.modList.mouseScrolled(double_1, double_2, double_3);
+	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+		if (modList.isMouseOver(mouseX, mouseY)) {
+			return this.modList.mouseScrolled(mouseX, mouseY, amount);
 		}
-		if (descriptionListWidget.isMouseOver(double_1, double_2)) {
-			return this.descriptionListWidget.mouseScrolled(double_1, double_2, double_3);
+		if (descriptionListWidget.isMouseOver(mouseX, mouseY)) {
+			return this.descriptionListWidget.mouseScrolled(mouseX, mouseY, amount);
 		}
 		return false;
 	}
@@ -110,12 +110,12 @@ public class ModsScreen extends Screen {
 		this.descriptionListWidget = new DescriptionListWidget(this.client, paneWidth, this.height, paneY + 60, this.height - 36, textRenderer.fontHeight + 1, this);
 		this.descriptionListWidget.setLeftPos(rightPaneX);
 		ButtonWidget configureButton = new ModMenuTexturedButtonWidget(width - 24, paneY, 20, 20, 0, 0, CONFIGURE_BUTTON_LOCATION, 32, 64, button -> {
-			final String modid = Objects.requireNonNull(selected).getMetadata().getId();
-			final Screen screen = ModMenu.getConfigScreen(modid, this);
+			final String modid = Objects.requireNonNull(selected).getMod().getId();
+			final Screen screen = configScreenCache.get(modid);
 			if (screen != null) {
 				client.openScreen(screen);
 			} else {
-				ModMenu.openConfigScreen(modid);
+				button.active = false;
 			}
 		},
 				CONFIGURE, (buttonWidget, matrices, mouseX, mouseY) -> {
@@ -129,8 +129,11 @@ public class ModsScreen extends Screen {
 			@Override
 			public void render(MatrixStack matrices, int mouseX, int mouseY, float delta) {
 				if (selected != null) {
-					String modid = selected.getMetadata().getId();
-					active = ModMenu.hasConfigScreenFactory(modid) || ModMenu.hasLegacyConfigScreenTask(modid);
+					String modid = selected.getMod().getId();
+					if (!configScreenCache.containsKey(modid)) {
+						configScreenCache.put(modid, ModMenu.getConfigScreen(modid, ModsScreen.this));
+					}
+					active = configScreenCache.get(modid) != null;
 				} else {
 					active = false;
 				}
@@ -148,35 +151,35 @@ public class ModsScreen extends Screen {
 		int cappedButtonWidth = Math.min(urlButtonWidths, 200);
 		ButtonWidget websiteButton = new ButtonWidget(rightPaneX + (urlButtonWidths / 2) - (cappedButtonWidth / 2), paneY + 36, Math.min(urlButtonWidths, 200), 20,
 				new TranslatableText("modmenu.website"), button -> {
-			final ModMetadata metadata = Objects.requireNonNull(selected).getMetadata();
+			final Mod mod = Objects.requireNonNull(selected).getMod();
 			this.client.openScreen(new ConfirmChatLinkScreen((bool) -> {
 				if (bool) {
-					Util.getOperatingSystem().open(metadata.getContact().get("homepage").get());
+					Util.getOperatingSystem().open(mod.getWebsite());
 				}
 				this.client.openScreen(this);
-			}, metadata.getContact().get("homepage").get(), true));
+			}, mod.getWebsite(), true));
 		}) {
 			@Override
 			public void render(MatrixStack matrices, int mouseX, int mouseY, float delta) {
 				visible = selected != null;
-				active = visible && selected.getMetadata().getContact().get("homepage").isPresent();
+				active = visible && selected.getMod().getWebsite() != null;
 				super.render(matrices, mouseX, mouseY, delta);
 			}
 		};
 		ButtonWidget issuesButton = new ButtonWidget(rightPaneX + urlButtonWidths + 4 + (urlButtonWidths / 2) - (cappedButtonWidth / 2), paneY + 36, Math.min(urlButtonWidths, 200), 20,
 				new TranslatableText("modmenu.issues"), button -> {
-			final ModMetadata metadata = Objects.requireNonNull(selected).getMetadata();
+			final Mod mod = Objects.requireNonNull(selected).getMod();
 			this.client.openScreen(new ConfirmChatLinkScreen((bool) -> {
 				if (bool) {
-					Util.getOperatingSystem().open(metadata.getContact().get("issues").get());
+					Util.getOperatingSystem().open(mod.getIssueTracker());
 				}
 				this.client.openScreen(this);
-			}, metadata.getContact().get("issues").get(), true));
+			}, mod.getIssueTracker(), true));
 		}) {
 			@Override
 			public void render(MatrixStack matrices, int mouseX, int mouseY, float delta) {
 				visible = selected != null;
-				active = visible && selected.getMetadata().getContact().get("issues").isPresent();
+				active = visible && selected.getMod().getIssueTracker() != null;
 				super.render(matrices, mouseX, mouseY, delta);
 			}
 		};
@@ -277,7 +280,7 @@ public class ModsScreen extends Screen {
 			}
 		}
 		if (selectedEntry != null) {
-			ModMetadata metadata = selectedEntry.getMetadata();
+			Mod mod = selectedEntry.getMod();
 			int x = rightPaneX;
 			RenderSystem.color4f(1.0F, 1.0F, 1.0F, 1.0F);
 			this.selected.bindIconTexture();
@@ -286,8 +289,7 @@ public class ModsScreen extends Screen {
 			RenderSystem.disableBlend();
 			int lineSpacing = textRenderer.fontHeight + 1;
 			int imageOffset = 36;
-			Text name = new LiteralText(metadata.getName());
-			name = HardcodedUtil.formatFabricModuleName(name.asString());
+			Text name = new LiteralText(mod.getName());
 			StringVisitable trimmedName = name;
 			int maxNameWidth = this.width - (x + imageOffset);
 			if (textRenderer.getWidth(name) > maxNameWidth) {
@@ -296,22 +298,18 @@ public class ModsScreen extends Screen {
 			}
 			textRenderer.draw(matrices, Language.getInstance().reorder(trimmedName), x + imageOffset, paneY + 1, 0xFFFFFF);
 			if (mouseX > x + imageOffset && mouseY > paneY + 1 && mouseY < paneY + 1 + textRenderer.fontHeight && mouseX < x + imageOffset + textRenderer.getWidth(trimmedName)) {
-				setTooltip(new TranslatableText("modmenu.modIdToolTip", metadata.getId()));
+				setTooltip(new TranslatableText("modmenu.modIdToolTip", mod.getId()));
 			}
-			if (init || badgeRenderer == null || badgeRenderer.getMetadata() != metadata) {
-				badgeRenderer = new BadgeRenderer(x + imageOffset + Objects.requireNonNull(this.client).textRenderer.getWidth(trimmedName) + 2, paneY, width - 28, selectedEntry.container, this);
+			if (init || badgeRenderer == null || badgeRenderer.getMod() != mod) {
+				badgeRenderer = new BadgeRenderer(x + imageOffset + Objects.requireNonNull(this.client).textRenderer.getWidth(trimmedName) + 2, paneY, width - 28, selectedEntry.mod, this);
 				init = false;
 			}
-			badgeRenderer.draw(matrices, mouseX, mouseY);
-			textRenderer.draw(matrices, "v" + metadata.getVersion().getFriendlyString(), x + imageOffset, paneY + 2 + lineSpacing, 0x808080);
+			if (!ModMenuConfigManager.getConfig().areBadgesHidden()) {
+				badgeRenderer.draw(matrices, mouseX, mouseY);
+			}
+			textRenderer.draw(matrices, "v" + mod.getVersion(), x + imageOffset, paneY + 2 + lineSpacing, 0x808080);
 			String authors;
-			List<String> names = new ArrayList<>();
-
-			metadata.getAuthors().stream()
-					.filter(Objects::nonNull)
-					.map(Person::getName)
-					.filter(Objects::nonNull)
-					.forEach(names::add);
+			List<String> names = mod.getAuthors();
 
 			if (!names.isEmpty()) {
 				if (names.size() > 1) {
@@ -329,68 +327,23 @@ public class ModsScreen extends Screen {
 	}
 
 	private Text computeModCountText(boolean includeLibs) {
-		int[] rootMods = formatModCount(ModMenu.ROOT_NONLIB_MODS);
+		int[] rootMods = formatModCount(ModMenu.ROOT_MODS.values().stream().filter(mod -> !mod.getBadges().contains(Mod.Badge.LIBRARY)).map(Mod::getId).collect(Collectors.toSet()));
 
 		if (includeLibs && ModMenuConfigManager.getConfig().showLibraries()) {
-			int[] rootLibs = formatModCount(ModMenu.ROOT_LIBRARIES);
-			return translateNumeric("modmenu.showingModsLibraries", rootMods, rootLibs);
+			int[] rootLibs = formatModCount(ModMenu.ROOT_MODS.values().stream().filter(mod -> mod.getBadges().contains(Mod.Badge.LIBRARY)).map(Mod::getId).collect(Collectors.toSet()));
+			return TranslationUtil.translateNumeric("modmenu.showingModsLibraries", rootMods, rootLibs);
 		} else {
-			return translateNumeric("modmenu.showingMods", rootMods);
+			return TranslationUtil.translateNumeric("modmenu.showingMods", rootMods);
 		}
 	}
 
 	private Text computeLibraryCountText() {
 		if (ModMenuConfigManager.getConfig().showLibraries()) {
-			int[] rootLibs = formatModCount(ModMenu.ROOT_LIBRARIES);
-			return translateNumeric("modmenu.showingLibraries", rootLibs);
+			int[] rootLibs = formatModCount(ModMenu.ROOT_MODS.values().stream().filter(mod -> mod.getBadges().contains(Mod.Badge.LIBRARY)).map(Mod::getId).collect(Collectors.toSet()));
+			return TranslationUtil.translateNumeric("modmenu.showingLibraries", rootLibs);
 		} else {
 			return new LiteralText(null);
 		}
-	}
-
-	private static Text translateNumeric(String key, int[]... args) {
-		Object[] realArgs = new Object[args.length];
-		for (int i = 0; i < args.length; i++) {
-			NumberFormat nf = NumberFormat.getInstance();
-			if (args[i].length == 1) {
-				realArgs[i] = nf.format(args[i][0]);
-			} else {
-				assert args[i].length == 2;
-				realArgs[i] = nf.format(args[i][0]) + "/" + nf.format(args[i][1]);
-			}
-		}
-
-		int[] override = new int[args.length];
-		Arrays.fill(override, -1);
-		for (int i = 0; i < args.length; i++) {
-			int[] arg = args[i];
-			if (arg == null) {
-				throw new NullPointerException("args[" + i + "]");
-			}
-			if (arg.length == 1) {
-				override[i] = arg[0];
-			}
-		}
-
-		String lastKey = key;
-		for (int flags = (1 << args.length) - 1; flags >= 0; flags--) {
-			StringBuilder fullKey = new StringBuilder(key);
-			for (int i = 0; i < args.length; i++) {
-				fullKey.append('.');
-				if (((flags & (1 << i)) != 0) && override[i] != -1) {
-					fullKey.append(override[i]);
-				} else {
-					fullKey.append('a');
-				}
-			}
-			lastKey = fullKey.toString();
-			if (I18n.hasTranslation(lastKey)) {
-//				return lastKey + Arrays.toString(realArgs);
-				return new TranslatableText(lastKey, realArgs);
-			}
-		}
-//		return lastKey + Arrays.toString(realArgs);
-		return new TranslatableText(lastKey, realArgs);
 	}
 
 	private int[] formatModCount(Set<String> set) {
@@ -510,5 +463,9 @@ public class ModsScreen extends Screen {
 		} catch (IOException e) {
 			return false;
 		}
+	}
+
+	public Map<String, Screen> getConfigScreenCache() {
+		return configScreenCache;
 	}
 }

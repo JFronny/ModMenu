@@ -4,8 +4,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.prospector.modmenu.ModMenu;
 import io.github.prospector.modmenu.gui.ModListEntry;
 import io.github.prospector.modmenu.gui.ModListWidget;
+import io.github.prospector.modmenu.util.Mod;
 import io.github.prospector.modmenu.util.ModListSearch;
-import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawableHelper;
 import net.minecraft.client.util.math.MatrixStack;
@@ -20,11 +20,11 @@ import java.util.Objects;
 
 public class ParentEntry extends ModListEntry {
 	private static final Identifier PARENT_MOD_TEXTURE = new Identifier(ModMenu.MOD_ID, "textures/gui/parent_mod.png");
-	protected List<ModContainer> children;
+	protected List<Mod> children;
 	protected ModListWidget list;
 	protected boolean hoveringIcon = false;
 
-	public ParentEntry(ModContainer parent, List<ModContainer> children, ModListWidget list) {
+	public ParentEntry(Mod parent, List<Mod> children, ModListWidget list) {
 		super(parent, list);
 		this.children = children;
 		this.list = list;
@@ -44,8 +44,8 @@ public class ParentEntry extends ModListEntry {
 		}
 		int childrenBadgeX = x + 32 - childrenBadgeWidth;
 		int childrenBadgeY = y + 32 - childrenBadgeHeight;
-		int childrenOutlineColor = 0x8810d098;
-		int childrenFillColor = 0x88046146;
+		int childrenOutlineColor = 0xff107454;
+		int childrenFillColor = 0xff093929;
 		DrawableHelper.fill(matrices, childrenBadgeX + 1, childrenBadgeY, childrenBadgeX + childrenBadgeWidth - 1, childrenBadgeY + 1, childrenOutlineColor);
 		DrawableHelper.fill(matrices, childrenBadgeX, childrenBadgeY + 1, childrenBadgeX + 1, childrenBadgeY + childrenBadgeHeight - 1, childrenOutlineColor);
 		DrawableHelper.fill(matrices, childrenBadgeX + childrenBadgeWidth - 1, childrenBadgeY + 1, childrenBadgeX + childrenBadgeWidth, childrenBadgeY + childrenBadgeHeight - 1, childrenOutlineColor);
@@ -56,7 +56,7 @@ public class ParentEntry extends ModListEntry {
 		if (isMouseOver(mouseX, mouseY)) {
 			DrawableHelper.fill(matrices, x, y, x + 32, y + 32, 0xA0909090);
 			this.client.getTextureManager().bindTexture(PARENT_MOD_TEXTURE);
-			int xOffset = list.getParent().showModChildren.contains(getMetadata().getId()) ? 32 : 0;
+			int xOffset = list.getParent().showModChildren.contains(getMod().getId()) ? 32 : 0;
 			int yOffset = hoveringIcon ? 32 : 0;
 			RenderSystem.color4f(1.0F, 1.0F, 1.0F, 1.0F);
 			DrawableHelper.drawTexture(matrices, x, y, xOffset, yOffset, 32 + xOffset, 32 + yOffset, 256, 256);
@@ -66,7 +66,7 @@ public class ParentEntry extends ModListEntry {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int i) {
 		if (hoveringIcon) {
-			String id = getMetadata().getId();
+			String id = getMod().getId();
 			if (list.getParent().showModChildren.contains(id)) {
 				list.getParent().showModChildren.remove(id);
 			} else {
@@ -80,7 +80,7 @@ public class ParentEntry extends ModListEntry {
 	@Override
 	public boolean keyPressed(int int_1, int int_2, int int_3) {
 		if (int_1 == GLFW.GLFW_KEY_ENTER) {
-			String id = getMetadata().getId();
+			String id = getMod().getId();
 			if (list.getParent().showModChildren.contains(id)) {
 				list.getParent().showModChildren.remove(id);
 			} else {
@@ -92,19 +92,19 @@ public class ParentEntry extends ModListEntry {
 		return super.keyPressed(int_1, int_2, int_3);
 	}
 
-	public void setChildren(List<ModContainer> children) {
+	public void setChildren(List<Mod> children) {
 		this.children = children;
 	}
 
-	public void addChildren(List<ModContainer> children) {
+	public void addChildren(List<Mod> children) {
 		this.children.addAll(children);
 	}
 
-	public void addChildren(ModContainer... children) {
+	public void addChildren(Mod... children) {
 		this.children.addAll(Arrays.asList(children));
 	}
 
-	public List<ModContainer> getChildren() {
+	public List<Mod> getChildren() {
 		return children;
 	}
 
